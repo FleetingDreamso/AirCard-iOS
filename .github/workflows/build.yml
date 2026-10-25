@@ -1,7 +1,8 @@
 name: Build AirCard-iOS
 
-# 只做打包，不编译 Rust、不装 cmake、不装 xcodegen。
-# AirliftFFI.xcframework 与 AirCard-iOS.xcodeproj 已随仓库提供，克隆下来即可直接 xcodebuild。
+# 先编译 rust-core 生成 AirliftFFI.xcframework，再打包 IPA。
+# 必须编译 Rust：Swift 侧引用的 FFI 符号（如 al_exploit_scan_descriptors）只存在于
+# 重新构建的静态库里，用仓库里的旧框架会报 "cannot find ... in scope"。
 on:
   workflow_dispatch:
   push:
@@ -27,8 +28,33 @@ jobs:
         with:
           xcode-version: latest-stable
 
-      - name: Make build script executable
-        run: chmod +x ./build-ipa.sh
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install cmake
+        run: brew install cmake
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust-core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-core/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Make build scripts executable
+        run: chmod +x ./build-ios.sh ./build-ipa.sh
+
+      - name: Build Rust FFI framework
+        run: |
+          # build-ios.sh 默认找 Xcode-beta.app，runner 上没有，这里显式指向当前选中的 Xcode
+          export DEVELOPER_DIR="$(xcode-select -p)"
+          ./build-ios.sh
 
       - name: Build AirCard-iOS (Unsigned)
         run: ./build-ipa.sh Release
