@@ -1,0 +1,208 @@
+name: 构建 IPA
+
+# 触发方式：
+#   1. push 到 main / master
+#   2. 打 v* 标签（会额外创建 GitHub Release 并附上 IPA）
+#   3. Pull Request（跑一次编译 + 单元测试，作为合并前检查）
+#   4. 手动触发（可选用 Debug/Release、是否跑测试）
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    # 纯文档改动不触发构建；注意标签推送不受 paths 过滤影响，打 v* 标签仍会正常构建
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Xcode 构建配置'
+        type: choice
+        options: [Release, Debug]
+        default: Release
+      xcode_version:
+        description: 'Xcode 版本（latest-stable 自动选最新稳定版）'
+        type: string
+        default: 'latest-stable'
+      run_tests:
+        description: '额外运行单元测试'
+        type: boolean
+        default: false
+
+# 打标签发布需要写 Release 的权限
+permissions:
+  contents: write
+
+# 同一分支重复推送时取消上一次，省额度
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # 与 project.yml 的 deploymentTarget 保持一致
+  IPHONEOS_DEPLOYMENT_TARGET: '18.0'
+  # Homebrew 提速
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+
+jobs:
+  build:
+    name: 编译并打包
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # Xcode 16+ 才能支持 iOS 18 部署目标；latest-stable 会自动选到最新的稳定版，
+      # 并导出 DEVELOPER_DIR，正好覆盖 build-ios.sh 里 Xcode-beta 的默认值。
+      - name: 选择 Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ inputs.xcode_version || 'latest-stable' }}
+
+      - name: 确认 Xcode 环境
+        run: |
+          if [ -z "${DEVELOPER_DIR:-}" ]; then
+            echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          fi
+          xcodebuild -version
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p)}"
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: 安装构建依赖（xcodegen / cmake）
+        run: |
+          # aws-lc-sys 用 cmake 构建 C 部分；xcodegen 用来从 project.yml 生成 .xcodeproj
+          command -v cmake >/dev/null 2>&1 || brew install cmake
+          command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+          echo "cmake:    $(cmake --version | head -1)"
+          echo "xcodegen: $(xcodegen --version)"
+
+      # Cargo.lock 里没有任何 git 源（idevice 已通过 [patch] 指向 rust-core/vendor），
+      # 所以只需缓存 crates.io 索引与编译产物，无需克隆上游仓库。
+      # aws-lc 的 C 部分编译很慢，缓存 rust-core/target 能显著提速；
+      # 如果发现缓存体积过大（仓库缓存上限 10GB），删掉 rust-core/target 这一行即可。
+      - name: 缓存 Cargo 依赖与编译产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            rust-core/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-core/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # 注意：AirliftFFI.xcframework 被 .gitignore 排除，新克隆里并不存在，
+      # 必须先跑这一步生成，否则后面 xcodegen 会找不到 framework 依赖。
+      - name: 编译 Rust 静态库并重建 xcframework
+        run: |
+          chmod +x build-ios.sh
+          ./build-ios.sh
+          echo "---- xcframework 产物 ----"
+          find AirliftFFI.xcframework -maxdepth 3 -name '*.a' -exec ls -lh {} \;
+
+      # 同理，*.xcodeproj 也被 .gitignore 排除，需要由 project.yml 现场生成
+      - name: 生成 Xcode 工程
+        run: |
+          xcodegen generate
+          test -d AirCard-iOS.xcodeproj || { echo "错误：AirCard-iOS.xcodeproj 未生成"; exit 1; }
+
+      - name: 编译并打包 IPA
+        run: |
+          chmod +x build-ipa.sh
+          CONFIG="${{ inputs.configuration || 'Release' }}"
+          ./build-ipa.sh "$CONFIG"
+
+      - name: 重命名产物
+        id: rename
+        run: |
+          CONFIG="${{ inputs.configuration || 'Release' }}"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          OUT="AirCard-iOS-${CONFIG}-${SHORT_SHA}.ipa"
+          mv build/AirCard-iOS.ipa "build/${OUT}"
+          echo "name=${OUT}" >> "$GITHUB_OUTPUT"
+          ls -lh "build/${OUT}"
+
+      # PR 与手动触发时可选跑单元测试。测试只做纯逻辑校验（AID 解析、卡号提取等），
+      # 不碰真机，但需要链接 AirliftFFI，所以必须放在 Rust 编译之后。
+      - name: 运行单元测试
+        if: github.event_name == 'pull_request' || inputs.run_tests
+        continue-on-error: true
+        run: |
+          UDID="$(xcrun simctl list devices available \
+            | grep -m1 -oE 'iPhone [^(]+\(([0-9A-Fa-f-]{36})\)' \
+            | grep -oE '[0-9A-Fa-f-]{36}')"
+          if [ -z "$UDID" ]; then
+            echo "::warning::未找到可用 iPhone 模拟器，跳过测试"
+            exit 0
+          fi
+          echo "使用模拟器: $UDID"
+          xcodebuild test \
+            -project AirCard-iOS.xcodeproj \
+            -scheme AirCard-iOS \
+            -destination "id=$UDID" \
+            -derivedDataPath build/TestDerivedData
+
+      # 汉化回归检查：确认中文文案真的被编译进可执行文件，
+      # 防止某次改动把文案改回英文或字符串被优化掉。
+      - name: 校验中文文案已编入产物
+        run: |
+          BIN="$(find build/DerivedData/Build/Products -type f -name 'AirCard-iOS' -path '*.app/*' | head -n 1)"
+          if [ -z "$BIN" ]; then
+            echo "::error::未找到 AirCard-iOS 可执行文件"
+            exit 1
+          fi
+          echo "可执行文件: $BIN"
+          MISS=0
+          for KW in 配对 钱包卡片 密码主题 刷入 活动日志; do
+            if LC_ALL=C grep -aq "$KW" "$BIN"; then
+              echo "  OK   $KW"
+            else
+              echo "::warning::产物中未找到中文文案「$KW」"
+              MISS=$((MISS + 1))
+            fi
+          done
+          if [ "$MISS" -gt 0 ]; then
+            echo "::error::有 $MISS 条中文文案未编入产物，请检查汉化是否被覆盖"
+            exit 1
+          fi
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirCard-iOS-${{ inputs.configuration || 'Release' }}
+          path: build/*.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      # 打标签时把 IPA 附到 Release 上，方便直接下载
+      - name: 发布到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/*.ipa
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## AirCard-iOS ${{ github.ref_name }}
+
+            未签名 IPA，需自行签名后安装（SideStore / AltStore / TrollStore / 自签工具均可）。
+
+            - 构建配置：`${{ inputs.configuration || 'Release' }}`
+            - 提交：`${{ github.sha }}`
+
+            > Rust 侧的中文日志已随本次构建重新编译进 `AirliftFFI.xcframework`。
