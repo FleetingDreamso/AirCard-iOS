@@ -44,9 +44,9 @@ final class PairingController: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .busy: return "Pairing is already in progress."
-            case .localNetworkDenied: return "Local Network permission is off. Enable it in Settings › AirCard-iOS › Local Network."
-            case .zeroBytes: return "Pairing produced an empty file. Approve the pairing request, then try again."
+            case .busy: return "配对已在进行中。"
+            case .localNetworkDenied: return "「本地网络」权限未开启。请在「设置 › AirCard-iOS › 本地网络」中开启。"
+            case .zeroBytes: return "配对生成的文件为空。请先批准配对请求，然后重试。"
             case let .failed(msg): return msg
             }
         }
@@ -136,7 +136,7 @@ final class PairingController: ObservableObject {
         keepAlive.stopAll()
         running = false
         pairingPIN = nil
-        pairingStatus = "Cancelled"
+        pairingStatus = "已取消"
         resolve(.failure(CancellationError()))
     }
 
@@ -151,14 +151,14 @@ final class PairingController: ObservableObject {
         keepAlive.stopAll()
         running = true
         pairingPIN = nil
-        pairingStatus = "Starting local host…"
+        pairingStatus = "正在启动本地主机…"
 
         Task {
             _ = await localNetwork.request()
             guard running else { return }
 
             keepAlive.startAudio()
-            pairingStatus = "Broadcasting… open Settings to pair"
+            pairingStatus = "正在广播…请打开设置完成配对"
             runHost()
         }
     }
@@ -203,7 +203,7 @@ final class PairingController: ObservableObject {
                 )
             } else {
                 let msg = cStr(result.error)
-                outcome = .failure(msg.isEmpty ? "pairing failed (rc=\(rc))" : msg)
+                outcome = .failure(msg.isEmpty ? "配对失败（rc=\(rc)）" : msg)
             }
             al_pairing_result_free(&result)
 
@@ -233,14 +233,14 @@ final class PairingController: ObservableObject {
             let canonical = Self.syncCanonicalPairingFile(from: path)
             let size = (try? FileManager.default.attributesOfItem(atPath: canonical)[.size] as? Int) ?? 0
             if size == 0 {
-                pairingStatus = "Failed: empty pairing file"
+                pairingStatus = "失败：配对文件为空"
                 resolve(.failure(PairingError.zeroBytes))
             } else {
-                pairingStatus = "Paired: \(name) (\(size)B)"
+                pairingStatus = "已配对：\(name)（\(size)B）"
                 resolve(.success(canonical))
             }
         case let .failure(message):
-            pairingStatus = "Failed: \(message)"
+            pairingStatus = "失败：\(message)"
             resolve(.failure(PairingError.failed(message)))
         }
     }
@@ -259,12 +259,12 @@ final class PairingController: ObservableObject {
         service.setTXTRecord(NetService.data(fromTXTRecord: txt))
         service.publish()
         netService = service
-        pairingStatus = "Advertising — open Settings › Privacy & Security › Developer Mode"
+        pairingStatus = "正在广播 — 请打开「设置 › 隐私与安全性 › 开发者模式」"
     }
 
     fileprivate func presentPin(_ pin: String) {
         pairingPIN = pin
-        pairingStatus = "Enter PIN \(pin) in Settings › Privacy & Security › Developer Mode › Pair with AirCard-iOS"
+        pairingStatus = "请在「设置 › 隐私与安全性 › 开发者模式 › 与 AirCard-iOS 配对」中输入 PIN \(pin)"
     }
 
     private func stopAdvertising() {

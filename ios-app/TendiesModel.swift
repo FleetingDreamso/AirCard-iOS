@@ -31,6 +31,15 @@ public enum TendiePosterType: String, Codable, CaseIterable {
         }
     }
 
+    public var displayName: String {
+        switch self {
+        case .collections: return "收藏"
+        case .suggestedPhotos: return "建议的照片"
+        case .mercury: return "Mercury"
+        case .container: return "应用容器"
+        }
+    }
+
     public var extensionBundleId: String {
         switch self {
         case .collections:

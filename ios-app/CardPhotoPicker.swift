@@ -81,11 +81,11 @@ struct CardPhotoPicker: UIViewControllerRepresentable {
                         self.presentCrop(image, from: picker)
                     } else {
                         let alert = UIAlertController(
-                            title: "Couldn't Load Photo",
-                            message: "Choose another image or try downloading the photo to your iPhone first.",
+                            title: "无法载入照片",
+                            message: "请选择其他图片，或先将照片下载到 iPhone。",
                             preferredStyle: .alert
                         )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        alert.addAction(UIAlertAction(title: "确定", style: .default))
                         (picker.parent ?? picker).present(alert, animated: true)
                     }
                 }
@@ -122,11 +122,11 @@ struct CardPhotoPicker: UIViewControllerRepresentable {
             let spinner = UIActivityIndicatorView(style: .large)
             spinner.startAnimating()
             let label = UILabel()
-            label.text = "Loading Photo…"
+            label.text = "正在载入照片…"
             label.font = .preferredFont(forTextStyle: .body)
             label.adjustsFontForContentSizeCategory = true
             let cancel = UIButton(type: .system)
-            cancel.setTitle("Cancel", for: .normal)
+            cancel.setTitle("取消", for: .normal)
             cancel.addAction(UIAction { [weak self] _ in self?.cancelLoading() }, for: .touchUpInside)
             let stack = UIStackView(arrangedSubviews: [spinner, label, cancel])
             stack.axis = .vertical

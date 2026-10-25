@@ -106,7 +106,7 @@ pub unsafe extern "C" fn al_exploit_run(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_exploit_run: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_exploit_run 发生 Rust panic：{e:?}"));
             }
             1
         }
@@ -133,7 +133,7 @@ pub unsafe extern "C" fn al_exploit_write_dir(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_exploit_write_dir: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_exploit_write_dir 发生 Rust panic：{e:?}"));
             }
             1
         }
@@ -161,7 +161,7 @@ pub unsafe extern "C" fn al_exploit_inject_folder(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_exploit_inject_folder: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_exploit_inject_folder 发生 Rust panic：{e:?}"));
             }
             1
         }
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn al_syslog_stream_start(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_syslog_stream_start: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_syslog_stream_start 发生 Rust panic：{e:?}"));
             }
             1
         }
@@ -356,7 +356,7 @@ pub unsafe extern "C" fn al_find_app_container(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_find_app_container: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_find_app_container 发生 Rust panic：{e:?}"));
             }
             1
         }
@@ -379,7 +379,7 @@ pub unsafe extern "C" fn al_device_respring(
         Ok(rc) => rc,
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = ffi_util::cstr(format!("Rust panic in al_device_respring: {e:?}"));
+                *out_error = ffi_util::cstr(format!("al_device_respring 发生 Rust panic：{e:?}"));
             }
             1
         }

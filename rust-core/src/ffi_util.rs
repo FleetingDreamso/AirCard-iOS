@@ -19,7 +19,7 @@ pub fn opt_str(p: *const c_char, default: &str) -> String {
 pub fn cstr(s: impl std::fmt::Display) -> *mut c_char {
     let s = format!("{s}");
     CString::new(s)
-        .unwrap_or_else(|_| CString::new("(null bytes in string)").unwrap())
+        .unwrap_or_else(|_| CString::new("（字符串中包含空字节）").unwrap())
         .into_raw()
 }
 
@@ -45,7 +45,7 @@ where
         .name(name.to_string())
         .stack_size(4 * 1024 * 1024)
         .spawn(f)
-        .map_err(|e| format!("Failed to spawn worker thread '{name}': {e}"))?
+        .map_err(|e| format!("无法启动工作线程 '{name}'：{e}"))?
         .join()
-        .map_err(|panic_err| format!("Worker thread '{name}' panicked: {panic_err:?}"))
+        .map_err(|panic_err| format!("工作线程 '{name}' 发生 panic：{panic_err:?}"))
 }

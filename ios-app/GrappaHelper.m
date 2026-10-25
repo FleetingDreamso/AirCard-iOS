@@ -48,7 +48,7 @@ int ALGetGrappaToken(
 ) {
     if (!out_buf || max_len == 0) {
         if (err_buf && err_len > 0) {
-            snprintf(err_buf, err_len, "invalid output buffer");
+            snprintf(err_buf, err_len, "输出缓冲区无效");
         }
         return -1;
     }
@@ -61,7 +61,7 @@ int ALGetGrappaToken(
             }
             if (!h) {
                 if (err_buf && err_len > 0) {
-                    snprintf(err_buf, err_len, "dlopen AirTraffic failed: %s", dlerror());
+                    snprintf(err_buf, err_len, "加载 AirTraffic 失败：%s", dlerror());
                 }
                 return -2;
             }
@@ -90,7 +90,7 @@ int ALGetGrappaToken(
             Class cls = objc_getClass("ATGrappaSession");
             if (!cls) {
                 if (err_buf && err_len > 0) {
-                    snprintf(err_buf, err_len, "ATGrappaSession class not found");
+                    snprintf(err_buf, err_len, "未找到 ATGrappaSession 类");
                 }
                 return -3;
             }
@@ -136,7 +136,7 @@ int ALGetGrappaToken(
 
             if (!clientRequestData || [clientRequestData length] == 0) {
                 if (err_buf && err_len > 0) {
-                    snprintf(err_buf, err_len, "failed to obtain valid Grappa token");
+                    snprintf(err_buf, err_len, "无法获取有效的 Grappa 令牌");
                 }
                 return -5;
             }
@@ -144,7 +144,7 @@ int ALGetGrappaToken(
             size_t len = [clientRequestData length];
             if (len > max_len) {
                 if (err_buf && err_len > 0) {
-                    snprintf(err_buf, err_len, "buffer too small: %zu > %zu", len, max_len);
+                    snprintf(err_buf, err_len, "缓冲区过小：%zu > %zu", len, max_len);
                 }
                 return -6;
             }
@@ -156,7 +156,7 @@ int ALGetGrappaToken(
             return 0; // Success!
         } @catch (NSException *ex) {
             if (err_buf && err_len > 0) {
-                snprintf(err_buf, err_len, "NSException in Grappa generation: %s", [[ex description] UTF8String]);
+                snprintf(err_buf, err_len, "生成 Grappa 时发生 NSException：%s", [[ex description] UTF8String]);
             }
             return -99;
         }

@@ -25,7 +25,19 @@ public enum PaymentNetwork: String, CaseIterable, Codable {
         }
     }
 
-    public var displayName: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .visa: return "Visa"
+        case .mastercard: return "Mastercard"
+        case .amex: return "美国运通"
+        case .unionPay: return "银联"
+        case .discover: return "Discover"
+        case .jcb: return "JCB"
+        case .appleCard: return "Apple Card"
+        case .transit: return "交通卡"
+        case .unknown: return "支付卡"
+        }
+    }
 
     public static func from(activationID: String) -> PaymentNetwork {
         let upper = activationID.uppercased()
