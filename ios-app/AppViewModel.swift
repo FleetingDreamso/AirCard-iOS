@@ -1360,7 +1360,7 @@ final class AppViewModel: ObservableObject {
             tendiesFlashPhase = .done(ok: true)
             tendiesFlashProgress = 1.0
             tendiesFlashLog.append("🎉 壁纸已成功应用！")
-            tendiesFlashLog.append("⚡ 正在触发 NeoSpring 注销重载…")
+            tendiesFlashLog.append("⚡ 正在触发 NeoSpring 注销…")
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.isNeoSpringing = true
@@ -1373,7 +1373,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func respringDevice() {
-        tendiesFlashLog.append("⚡ 正在触发 NeoSpring 注销重载…")
+        tendiesFlashLog.append("⚡ 正在触发 NeoSpring 注销…")
         isNeoSpringing = true
         RespringHelper.triggerNeoSpring()
     }

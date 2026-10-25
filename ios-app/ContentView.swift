@@ -518,7 +518,7 @@ struct CreditsSheet: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("NeoSpring & PosterBoard")
                                 .font(.subheadline.bold())
-                            Text("SpringBoard 重载与 .tendies 壁纸（@neonmodder123、@skadz108、@rooootdev）")
+                            Text("注销与 .tendies 壁纸（@neonmodder123、@skadz108、@rooootdev）")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -957,7 +957,7 @@ struct PairingTab: View {
                         if vm.hasPairingFile {
                             Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("配对就绪，可执行 ✅")
+                                Text("配对就绪，可以开始 ✅")
                                     .font(.subheadline.bold())
                                 Text("\(vm.pairingFileName) (\(vm.pairingFileSizeString))")
                                     .font(.caption.monospaced())

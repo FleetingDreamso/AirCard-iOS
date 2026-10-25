@@ -383,7 +383,7 @@ public final class TendiesEngine {
             pairingPath: pairingPath,
             log: log
         )
-        log("✅ PosterBoard 偏好设置已准备好待重载")
+        log("✅ PosterBoard 偏好设置已就绪，注销后生效")
 
         progress(1.0)
         log("\n🎉 全部壁纸注入成功！请打开锁屏设置，或长按锁屏选择新壁纸。")

@@ -236,7 +236,7 @@ final class PairingController: ObservableObject {
                 pairingStatus = "失败：配对文件为空"
                 resolve(.failure(PairingError.zeroBytes))
             } else {
-                pairingStatus = "已配对：\(name)（\(size)B）"
+                pairingStatus = "已配对：\(name)（\(size) 字节）"
                 resolve(.success(canonical))
             }
         case let .failure(message):

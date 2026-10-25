@@ -171,7 +171,7 @@ struct TendiesView: View {
                             HStack(spacing: 8) {
                                 Spacer()
                                 Image(systemName: "bolt.fill")
-                                Text("注销重载（NeoSpring）")
+                                Text("注销（NeoSpring）")
                                 Spacer()
                             }
                             .font(.headline)
@@ -183,7 +183,7 @@ struct TendiesView: View {
                     }
                     .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
                 } footer: {
-                    Text("刷入后会自动触发 NeoSpring 注销重载设备，以应用新壁纸。")
+                    Text("刷入后会自动触发 NeoSpring 注销，以应用新壁纸。")
                 }
 
                 // Section 5: Flash Log (CompactLogView)
