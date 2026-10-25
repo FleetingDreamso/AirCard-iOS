@@ -218,6 +218,121 @@ public final class TendiesEngine {
         }
     }
 
+    // MARK: - Scan Device Descriptors (read-only)
+
+    /// Walk the on-device PosterBoard descriptor store and report what is installed.
+    ///
+    /// Read-only: the Rust side reaches the container through a temporary AFC
+    /// symlink and unlinks it before returning, so nothing on the device changes.
+    public func scanDeviceDescriptors(
+        pairingPath: String,
+        containerPath: String,
+        structVersion: Int
+    ) async throws -> DescriptorScanReport {
+        var normalizedContainer = containerPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedContainer.hasSuffix("/") {
+            normalizedContainer = String(normalizedContainer.dropLast())
+        }
+        guard !normalizedContainer.isEmpty else {
+            throw NSError(
+                domain: "TendiesEngine",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "PosterBoard 容器路径为必填项。"]
+            )
+        }
+
+        let json = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var outJSON: UnsafeMutablePointer<CChar>? = nil
+                var outError: UnsafeMutablePointer<CChar>? = nil
+
+                let rc = pairingPath.withCString { pairC in
+                    normalizedContainer.withCString { containerC in
+                        al_exploit_scan_descriptors(
+                            pairC,
+                            containerC,
+                            Int32(structVersion),
+                            { _, msg in
+                                guard let msg = msg else { return }
+                                let line = String(cString: msg)
+                                DispatchQueue.main.async {
+                                    AppViewModel.shared?.tendiesFlashLog.append("    " + line)
+                                }
+                            },
+                            nil,
+                            &outJSON,
+                            &outError
+                        )
+                    }
+                }
+
+                if rc == 0, let p = outJSON {
+                    let s = String(cString: p)
+                    al_string_free(p)
+                    continuation.resume(returning: s)
+                } else {
+                    let errStr = outError.flatMap { p in
+                        let s = String(cString: p)
+                        al_string_free(p)
+                        return s
+                    } ?? "扫描设备描述符失败"
+                    continuation.resume(throwing: NSError(
+                        domain: "TendiesEngine",
+                        code: Int(rc),
+                        userInfo: [NSLocalizedDescriptionKey: errStr]
+                    ))
+                }
+            }
+        }
+
+        return try Self.parseScanReport(json: json)
+    }
+
+    private static func parseScanReport(json: String) throws -> DescriptorScanReport {
+        guard let data = json.data(using: .utf8) else {
+            throw NSError(
+                domain: "TendiesEngine",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "扫描结果不是有效的 UTF-8 文本"]
+            )
+        }
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw NSError(
+                domain: "TendiesEngine",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "扫描结果不是有效的 JSON"]
+            )
+        }
+
+        let container = root["container"] as? String ?? ""
+        let structVersion = root["structVersion"] as? Int ?? 0
+        let rawExtensions = root["extensions"] as? [[String: Any]] ?? []
+
+        var extensions: [ScannedExtension] = []
+        for raw in rawExtensions {
+            guard let bundleId = raw["bundleId"] as? String else { continue }
+            let rawDescriptors = raw["descriptors"] as? [[String: Any]] ?? []
+            let descriptors: [ScannedDescriptor] = rawDescriptors.compactMap { d in
+                guard let name = d["name"] as? String else { return nil }
+                return ScannedDescriptor(
+                    id: name,
+                    created: d["created"] as? String ?? "",
+                    modified: d["modified"] as? String ?? "",
+                    size: d["size"] as? Int ?? 0,
+                    isDirectory: d["isDirectory"] as? Bool ?? false,
+                    identifier: d["identifier"] as? String ?? ""
+                )
+            }
+            extensions.append(ScannedExtension(bundleId: bundleId, descriptors: descriptors))
+        }
+
+        return DescriptorScanReport(
+            container: container,
+            structVersion: structVersion,
+            extensions: extensions
+        )
+    }
+
     // MARK: - Send Respring Signal via Tunnel
 
     public func sendRespringSignal(pairingPath: String) async -> Bool {
@@ -721,4 +836,49 @@ public final class TendiesEngine {
 
         return results.isEmpty ? [(ext: defaultExt, url: rootURL)] : results
     }
+}
+
+// MARK: - Device Descriptor Scan Models
+
+/// One descriptor directory found inside the on-device PosterBoard store.
+public struct ScannedDescriptor: Identifiable, Hashable {
+    /// Directory name — an upper-case UUID generated at flash time.
+    public let id: String
+    public let created: String
+    public let modified: String
+    public let size: Int
+    public let isDirectory: Bool
+    /// Contents of `com.apple.posterkit.provider.descriptor.identifier`, if present.
+    public let identifier: String
+
+    /// Airlift rewrites numeric descriptor identifiers to a 5-digit random value
+    /// (`Int.random(in: 10000...99999)`); native ones are usually 4-digit or symbols.
+    public var looksInjected: Bool {
+        guard identifier.count == 5 else { return false }
+        return identifier.allSatisfy { $0.isNumber }
+    }
+}
+
+/// A PosterBoard extension bundle and the descriptors it owns.
+public struct ScannedExtension: Identifiable, Hashable {
+    public var id: String { bundleId }
+    public let bundleId: String
+    public let descriptors: [ScannedDescriptor]
+}
+
+/// Result of a read-only scan of the device's PosterBoard descriptor store.
+public struct DescriptorScanReport {
+    public let container: String
+    public let structVersion: Int
+    public let extensions: [ScannedExtension]
+
+    public var descriptorCount: Int {
+        extensions.reduce(0) { $0 + $1.descriptors.count }
+    }
+
+    public var suspectedInjectedCount: Int {
+        extensions.reduce(0) { $0 + $1.descriptors.filter(\.looksInjected).count }
+    }
+
+    public var isEmpty: Bool { descriptorCount == 0 }
 }

@@ -147,6 +147,21 @@ int32_t al_device_respring(const char *pairing_path,
                           void *ctx,
                           char **out_error);
 
+// Read-only scan of the on-device PosterBoard descriptor store.
+// `container` is the PosterBoard data container (see al_find_app_container).
+// `struct_version` — PRBPosterExtensionDataStore layout version (59 for iOS 16
+// and below, 61 for iOS 17+); other known versions are tried as a fallback.
+// Nothing on the device is modified. Blocks until the walk finishes.
+// Returns 0 on success with out_json set to a JSON report (free with
+// al_string_free), 1 on error with out_error set.
+int32_t al_exploit_scan_descriptors(const char *pairing_path,
+                                    const char *container,
+                                    int32_t struct_version,
+                                    ALLogCallback log_cb,
+                                    void *ctx,
+                                    char **out_json,
+                                    char **out_error);
+
 // ---------------------------------------------------------------------------
 // Target Host Configuration
 // ---------------------------------------------------------------------------
