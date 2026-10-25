@@ -386,6 +386,46 @@ pub unsafe extern "C" fn al_device_respring(
     }
 }
 
+/// Read-only scan of the on-device PosterBoard descriptor store.
+///
+/// `container` is the PosterBoard data container path (see al_find_app_container).
+/// `struct_version` is the PRBPosterExtensionDataStore layout version the caller
+/// expects (59 for iOS 16 and below, 61 for iOS 17+); the scanner falls back to
+/// the other known versions if the requested one yields nothing.
+/// Returns 0 on success (with out_json set to a JSON report), 1 on error.
+#[no_mangle]
+pub unsafe extern "C" fn al_exploit_scan_descriptors(
+    pairing_path: *const c_char,
+    container: *const c_char,
+    struct_version: i32,
+    log_cb: exploit::ALLogCallback,
+    ctx: *mut c_void,
+    out_json: *mut *mut c_char,
+    out_error: *mut *mut c_char,
+) -> i32 {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        exploit::scan_descriptors(
+            pairing_path,
+            container,
+            struct_version,
+            log_cb,
+            ctx,
+            out_json,
+            out_error,
+        )
+    }));
+    match res {
+        Ok(rc) => rc,
+        Err(e) => {
+            if !out_error.is_null() {
+                *out_error =
+                    ffi_util::cstr(format!("al_exploit_scan_descriptors 发生 Rust panic：{e:?}"));
+            }
+            1
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Target Host Configuration
 // ---------------------------------------------------------------------------

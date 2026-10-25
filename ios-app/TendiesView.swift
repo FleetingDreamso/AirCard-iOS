@@ -14,6 +14,8 @@ struct TendiesView: View {
     @State private var showFilePicker = false
     @State private var selectedDetailItem: TendieItem? = nil
     @State private var isNeoSpringing = false
+    @State private var isScanningDevice = false
+    @State private var scanReport: DescriptorScanReport? = nil
 
     private var selectedCount: Int {
         vm.tendieItems.filter { $0.isSelected }.count
@@ -21,6 +23,51 @@ struct TendiesView: View {
 
     private var selectedAll: Bool {
         !vm.tendieItems.isEmpty && vm.tendieItems.allSatisfy { $0.isSelected }
+    }
+
+    /// 把 `com.apple.WallpaperKit.CollectionsPoster` 缩成 `CollectionsPoster`。
+    private func shortBundleName(_ bundleId: String) -> String {
+        bundleId.split(separator: ".").last.map(String.init) ?? bundleId
+    }
+
+    @MainActor
+    private func runDeviceScan() async {
+        guard !isScanningDevice else { return }
+        isScanningDevice = true
+        defer { isScanningDevice = false }
+
+        let pairingPath = PairingController.pairingFilePath()
+        guard FileManager.default.fileExists(atPath: pairingPath) else {
+            vm.errorMessage = "没有生效的配对文件。请先在「配对」标签页完成设备配对。"
+            return
+        }
+
+        if vm.posterBoardContainer.isEmpty {
+            await vm.autoDetectPosterBoardContainer(silent: false)
+        }
+        guard !vm.posterBoardContainer.isEmpty else {
+            vm.errorMessage = "未检测到 PosterBoard 容器，无法扫描。"
+            return
+        }
+
+        let majorVer = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        let structVersion = (majorVer <= 16) ? 59 : 61
+
+        vm.tendiesFlashLog.append("🔍 正在扫描设备端壁纸描述符…")
+        do {
+            let report = try await TendiesEngine.shared.scanDeviceDescriptors(
+                pairingPath: pairingPath,
+                containerPath: vm.posterBoardContainer,
+                structVersion: structVersion
+            )
+            scanReport = report
+            vm.tendiesFlashLog.append(
+                "✅ 扫描完成：\(report.descriptorCount) 个描述符，疑似注入 \(report.suspectedInjectedCount) 个"
+            )
+        } catch {
+            vm.errorMessage = "扫描失败：\(error.localizedDescription)"
+            vm.tendiesFlashLog.append("❌ 扫描失败：\(error.localizedDescription)")
+        }
     }
 
     var body: some View {
@@ -186,7 +233,77 @@ struct TendiesView: View {
                     Text("刷入后会自动触发 NeoSpring 注销，以应用新壁纸。")
                 }
 
-                // Section 5: Flash Log (CompactLogView)
+                // Section 5: Device Descriptor Scan (read-only)
+                Section {
+                    Button {
+                        Task { await runDeviceScan() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Spacer()
+                            if isScanningDevice {
+                                ProgressView()
+                                Text("正在扫描设备…")
+                            } else {
+                                Image(systemName: "magnifyingglass")
+                                Text("扫描设备端壁纸")
+                            }
+                            Spacer()
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                    }
+                    .disabled(isScanningDevice)
+                } footer: {
+                    Text("只读操作：仅列出设备 PosterBoard 容器里已安装的壁纸描述符，不会修改或删除任何内容。")
+                }
+
+                if let report = scanReport {
+                    Section {
+                        if report.isEmpty {
+                            Text("未发现任何壁纸描述符。")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(report.extensions) { ext in
+                                DisclosureGroup {
+                                    ForEach(ext.descriptors) { desc in
+                                        ScannedDescriptorRow(descriptor: desc)
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(shortBundleName(ext.bundleId))
+                                            .font(.subheadline.weight(.medium))
+                                        Spacer()
+                                        Text("\(ext.descriptors.count)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack(spacing: 8) {
+                            Text("设备端壁纸（\(report.descriptorCount) 项）")
+                            Spacer()
+                            if report.suspectedInjectedCount > 0 {
+                                Text("疑似注入 \(report.suspectedInjectedCount)")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("结构版本 \(report.structVersion)")
+                            Text(report.container)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .font(.caption2)
+                    }
+                }
+
+                // Section 6: Flash Log (CompactLogView)
                 if !vm.tendiesFlashLog.isEmpty {
                     Section {
                         CompactLogView(
@@ -244,6 +361,48 @@ struct TendiesView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Scanned Descriptor Row
+
+struct ScannedDescriptorRow: View {
+    let descriptor: ScannedDescriptor
+
+    private var sizeText: String {
+        ByteCountFormatter.string(fromByteCount: Int64(descriptor.size), countStyle: .file)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(descriptor.id)
+                    .font(.system(.caption, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                if descriptor.looksInjected {
+                    Text("疑似注入")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.18))
+                        .foregroundColor(.orange)
+                        .clipShape(Capsule())
+                }
+            }
+            HStack(spacing: 8) {
+                if !descriptor.identifier.isEmpty {
+                    Text("ID \(descriptor.identifier)")
+                }
+                if !descriptor.modified.isEmpty {
+                    Text(descriptor.modified)
+                }
+                Text(sizeText)
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary)
         }
     }
 }
